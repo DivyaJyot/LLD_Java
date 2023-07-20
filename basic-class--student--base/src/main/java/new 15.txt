@@ -1,0 +1,642 @@
+package com.networkpolling.config;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.batch.item.ItemReader;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networkpolling.model.Branch;
+import com.networkpolling.model.BranchReference;
+import com.networkpolling.model.ConfigTemplate;
+import com.networkpolling.model.ConfigTemplateInfo;
+import com.networkpolling.model.Device;
+import com.networkpolling.model.Inventory;
+import com.networkpolling.model.InventoryInfo;
+import com.networkpolling.model.NetworkRequest;
+import com.networkpolling.model.NetworkResponse;
+import com.networkpolling.model.Organization;
+import com.networkpolling.restmapper.MConfigTemplate;
+import com.networkpolling.restmapper.MCreateBranchResp;
+import com.networkpolling.restmapper.MDevice;
+import com.networkpolling.restmapper.MInventory;
+import com.networkpolling.restmapper.MNetwork;
+import com.networkpolling.service.ApiService;
+import com.networkpolling.util.APIResponse;
+import com.networkpolling.util.ApiRateLimitExceededException;
+import com.networkpolling.util.OperationalDataCache;
+import com.networkpolling.util.Utilities;
+
+@Slf4j
+public class ProcessReader implements ItemReader<Branch> {   
+
+	private OperationalDataCache operationalData;
+	private static BlockingQueue<Branch> readerObject;	
+	private final ApiService apiService;	
+	private final String organizationId;	
+	private Map<String, String> deviceStatusMappingRepo;
+
+	public ProcessReader(OperationalDataCache operationalData, ApiService apiService) {
+		this.operationalData = operationalData;
+		this.apiService=apiService;
+		organizationId = operationalData.getConfigurationProperties().get("organization.id");
+		readerObject = new ArrayBlockingQueue<Branch>(Integer.parseInt(operationalData.getConfigurationProperties().get("queue.size")));
+		deviceStatusMappingRepo = new ConcurrentHashMap<String, String>();
+
+		getNetworks();
+		getOrganization();
+		//getUnclaimedInventory();
+		syncAndCreateBranch();
+		getDeviceStatus();
+		getDevices();
+	}
+
+	@Override
+	public Branch read() throws Exception {
+
+		Branch object = null;
+		if(readerObject.size() > 0) {
+			object = readerObject.take();
+		}
+		return object;
+	}
+
+
+
+	private void getNetworks() {		
+		ObjectMapper mapper;
+		List<MNetwork> mNetworkList;
+		List<String> activeBranchList;
+		try {
+			String url = operationalData.getConfigurationProperties().get("meraki.org") + "/" + organizationId + "/networks";
+
+			String jsonResponse=apiService.getJsonData(url, operationalData);
+			if(jsonResponse!=null && !jsonResponse.trim().isEmpty()){				
+				activeBranchList = new ArrayList<String>();
+				mapper = new ObjectMapper();
+				try {
+					mNetworkList= java.util.Arrays.asList(mapper.readValue(jsonResponse, MNetwork[].class));
+					for(MNetwork mNetwork : mNetworkList) {
+						Branch branch=null;
+						if(operationalData.getBranchRepository().get(mNetwork.getId())!=null)
+							branch= operationalData.getBranchRepository().get(mNetwork.getId()).getBranch();
+						if(branch == null){
+							branch = new Branch();
+							branch.setId(mNetwork.getId());
+							branch.setBranchName(mNetwork.getName());
+							branch.setBranchType(mNetwork.getType());
+							branch.setOrgId(Long.valueOf(organizationId));
+							branch.setOem(operationalData.getConfigurationProperties().get("meraki"));
+							branch.setStatus(operationalData.getConfigurationProperties().get("status.active"));
+							branch.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+							branch.setCreatedBy("TNaas");
+						} else {
+							branch.setBranchName(mNetwork.getName());
+							branch.setBranchType(mNetwork.getType());
+							branch.setUpdatedDate(operationalData.getConfigurationProperties().get("job.time"));
+							branch.setUpdatedBy("TNaas");
+							branch.setStatus(operationalData.getConfigurationProperties().get("status.active"));
+						}
+						branch.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+						operationalData.getBranchRepository().put(mNetwork.getId(), new BranchReference(branch, Arrays.asList(mNetwork.getProductTypes())));
+						activeBranchList.add(mNetwork.getId());
+						try {
+							readerObject.put(branch);
+						} catch (InterruptedException e) {
+							log.error("Exception occured in getNetworks(): " + e.getMessage());
+						}
+					}
+					for(String id : operationalData.getBranchRepository().keySet()) {
+						if(activeBranchList.contains(id)){
+							continue;
+						}
+						operationalData.getBranchRepository().get(id).getBranch().setStatus(operationalData.getConfigurationProperties().get("status.inactive"));
+					}
+				} catch(Exception e) {
+					log.error("Exception occured in getNetworks(): " + e.getMessage());
+				}
+			}
+		} catch(IllegalStateException iEx) {
+			log.error("IllegalStateException occured in getNetworks():" + iEx.getMessage());
+		} catch (ApiRateLimitExceededException e1) {
+			log.error("Error: After retries in catch " +e1.getErrorMessage());
+		}
+		finally {
+			activeBranchList = null;
+			mNetworkList = null;
+			mapper = null;
+		}
+	}
+
+	private void getOrganization() {
+		Organization organization = operationalData.getOrganizationRepository().get(organizationId);
+		if(organization == null) {
+			organization = new Organization();
+			organization.setId(organizationId);
+			organization.setOrgName(operationalData.getConfigurationProperties().get("organization.name"));
+			organization.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+			organization.setCreatedBy("TNaas");
+		} else {
+			organization.setUpdatedDate(operationalData.getConfigurationProperties().get("job.time"));
+			organization.setUpdatedBy("TNaas");
+		}
+		organization.setStatus(operationalData.getConfigurationProperties().get("status.active"));
+		List<Branch> branchList = operationalData.getBranchRepository().values().stream().map(BranchReference::getBranch).collect(Collectors.toList());
+		organization.setBranch(branchList);
+		organization.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+
+		operationalData.getOrganizationRepository().put(organizationId, organization);
+
+		//restClientService.sendOrganization(organization);
+		System.out.println("<SEND TO KAFKA>" + organization);
+	}
+
+	private void getDeviceStatus() {
+		ObjectMapper mapper;
+		List<MDevice> mDeviceStatusList;
+		try {
+			String statusUrl = operationalData.getConfigurationProperties().get("meraki.org") + "/" + organizationId + "/deviceStatuses";
+			String jsonResponse=apiService.getJsonData(statusUrl, operationalData);
+			if(jsonResponse!=null && !jsonResponse.trim().isEmpty()){
+
+				mapper = new ObjectMapper();
+				try {
+					mDeviceStatusList= java.util.Arrays.asList(mapper.readValue(jsonResponse, MDevice[].class));
+					for(MDevice mDevice : mDeviceStatusList) {
+						deviceStatusMappingRepo.put(mDevice.getSerial(), mDevice.getStatus());
+					}
+				} catch(Exception e) {
+					System.out.println("Exception occured in getDeviceStatus(): " + e.getMessage());
+				}
+			}
+		} catch(IllegalStateException iEx) {
+			System.out.println("Exception occured in getDeviceStatus(): " + iEx.getMessage());
+		} catch (ApiRateLimitExceededException e1) {
+			System.out.println("Error: After retries in catch " +e1.getErrorMessage()); 
+		}
+		finally {
+			mDeviceStatusList = null;
+			mapper = null;
+		}
+	}
+
+	private void getDevices() {
+		ObjectMapper mapper;
+		List<MDevice> mDeviceList;
+		try {
+
+			String url = operationalData.getConfigurationProperties().get("meraki.org") + "/" + organizationId + "/devices";
+			String jsonResponse = apiService.getJsonData(url, operationalData);
+
+			if(jsonResponse!=null && !jsonResponse.trim().isEmpty()) {
+				mapper = new ObjectMapper();
+				try {
+					mDeviceList= java.util.Arrays.asList(mapper.readValue(jsonResponse, MDevice[].class));
+					Device device = null;
+					Branch branch = null;
+					for(MDevice mDevice : mDeviceList) {
+						String branchId = mDevice.getNetworkId();
+						if(operationalData.getDeviceRepository().get(branchId) == null)
+							operationalData.getDeviceRepository().put(branchId, new ConcurrentHashMap<String, Device>());
+
+						if(operationalData.getIpWiseDeviceSerial().get(branchId) == null)
+							operationalData.getIpWiseDeviceSerial().put(branchId, new ConcurrentHashMap<String, String>());
+
+						device = operationalData.getDeviceRepository().get(branchId).get(mDevice.getSerial());
+						branch = operationalData.getBranchRepository().get(branchId).getBranch();
+						if(device == null)
+							device = new Device();
+
+						device.setId(operationalData.getConfigurationProperties().get("meraki.tenant.prefix")+mDevice.getSerial()+operationalData.getConfigurationProperties().get("job.time"));
+						device.setBranchName(branch.getBranchName());
+						device.setName(mDevice.getName());
+						if(mDevice.getModel().startsWith("vMX") || mDevice.getModel().startsWith("MX")) {
+							device.setDeviceType("Security Device");
+						} else if(mDevice.getModel().startsWith("MV")) {
+							device.setDeviceType("Camera");
+						} else if(mDevice.getModel().startsWith("MS")) {
+							device.setDeviceType("Switch");
+						} else if(mDevice.getModel().startsWith("MR")) {
+							device.setDeviceType("Access Point");
+						}
+						device.setSerial(mDevice.getSerial());
+						device.setMacAddress(mDevice.getMac());
+						device.setBranchId(branch.getId());
+						device.setBranchType(operationalData.getConfigurationProperties().get("meraki"));
+						device.setModel(mDevice.getModel());
+						device.setLat(mDevice.getLat());
+						device.setLng(mDevice.getLng());
+						//						device.setLocation(new GeoPoint(Double.valueOf(mDevice.getLat()), Double.valueOf(mDevice.getLng())));
+						device.setLanIP(mDevice.getLanIp());
+						device.setTags(mDevice.getTags());
+						device.setFirmware(mDevice.getFirmware());
+						device.setNotes(mDevice.getNotes());
+						device.setPublicIpAddress(mDevice.getPublicIp());
+						device.setLastReportedAt(mDevice.getLastReportedAt());
+						device.setUsingCellularFailove(Boolean.valueOf(mDevice.getUsingCellularFailover()));
+						device.setWan1Ip(mDevice.getWan1Ip());
+						device.setWan2Ip(mDevice.getWan2Ip());
+						device.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+						device.setCreatedBy("TNaas");
+						device.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+
+						device.setStatus(deviceStatusMappingRepo.get(mDevice.getSerial()) != null ?
+								deviceStatusMappingRepo.get(mDevice.getSerial()) : operationalData.getConfigurationProperties().get("status.device"));
+
+						if(mDevice.getSerial() != null)
+							operationalData.getDeviceRepository().get(branchId).put(mDevice.getSerial(), device);
+						if(mDevice.getMac() != null)
+							operationalData.getDeviceRepository().get(branchId).put(mDevice.getMac(), device);
+						if(mDevice.getLanIp() != null && mDevice.getSerial() != null)
+							operationalData.getIpWiseDeviceSerial().get(branchId).put(mDevice.getLanIp(), mDevice.getSerial());
+
+					}
+				} catch(Exception e) {
+					log.error("Exception occured in getDevices(): " + e.getMessage());
+				}
+			}
+		} catch(IllegalStateException iEx) {
+			log.error("Exception occured in getDevices(): " + iEx.getMessage());
+		} catch (ApiRateLimitExceededException e1) {
+			log.error("Error: After retries in catch " +e1.getErrorMessage()); 	 
+		}
+		finally {
+			deviceStatusMappingRepo = null;
+			mDeviceList = null;
+			mapper = null;
+		}
+	}
+	public List<MInventory> getUnclaimedInventory(String baseUrl, String organizationId, Utilities utilities, OperationalDataCache operationalDataCache)
+	{
+		////https://n189.meraki.com
+		ObjectMapper mapper= new ObjectMapper();
+		String jsonResponse=null;
+		List<MInventory> minventory;
+		List<MInventory> unclaimedInventory = null;
+		String url=baseUrl+"/organizations"+"/"+organizationId+"/inventory";
+		try {
+			APIResponse apiResponse = utilities.callApi(url,
+					operationalData.getConfigurationProperties().get("proxy.address"),
+					Integer.parseInt(operationalData.getConfigurationProperties().get("proxy.port")),
+					operationalData.getConfigurationProperties().get("meraki.api.token.key"),
+					operationalData.getConfigurationProperties().get("meraki.meraki_access_token"),
+					Boolean.valueOf(operationalData.getConfigurationProperties().get("proxy.bypass")));
+
+			if (apiResponse.getResponseCode() == 200) {
+				jsonResponse = apiResponse.getJsonResponse();
+				if(jsonResponse!=null && !jsonResponse.trim().isEmpty())
+				{
+					minventory=Arrays.asList(mapper.readValue(jsonResponse, MInventory[].class));
+					System.out.println("minventory:"+ minventory);
+					unclaimedInventory = minventory.stream().filter(inv ->inv.getNetworkId()==null).collect(Collectors.toList());
+
+					System.out.println("unclaimedInventory"+unclaimedInventory);
+				}
+			}
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		System.out.println(jsonResponse);
+		return unclaimedInventory;
+	}
+	
+	
+	public void syncAndCreateBranch()
+	{
+		try
+		{
+			String baseUrl= operationalData.getConfigurationProperties().get("meraki.orgurl");
+			String organizationId= operationalData.getConfigurationProperties().get("organization.id");
+			
+			Utilities utilities = new Utilities();
+			List<MInventory> merakiInventoryList = getUnclaimedInventory(baseUrl, organizationId, utilities, operationalData);
+			List<MConfigTemplate> merakiTemplateList = getConfigTemplate(baseUrl, organizationId, utilities, operationalData);
+			boolean isInventorySync=checkIfInventoryInsync(operationalData, organizationId, utilities, baseUrl, merakiInventoryList);
+			boolean isTemplateSync= checkIfTemplateInSync(operationalData, organizationId, utilities, baseUrl,merakiTemplateList);
+			boolean isSync= true;//(isInventorySync&&isTemplateSync);
+			if(checkIfInventoryInsync(operationalData, organizationId, utilities, baseUrl, merakiInventoryList)) {
+				if(checkIfTemplateInSync(operationalData, organizationId, utilities, baseUrl,merakiTemplateList)) {
+					
+				} else {
+					
+				}
+			} else {
+				
+			}
+			NetworkResponse networkResponse=null;
+			if(isSync)
+			{
+				String branchName ="testBranchThroughCode8";
+				String branchTags="tag1 tag2";
+				String branchTypes="appliance switch";
+				String fromBranch= "L_669347494617960981";
+				String useTemplate="";
+				String[] serials={"Q2GW-NVT7-T9U5","Q2GW-UCWL-AUQT"};
+
+				NetworkRequest mrequest= new NetworkRequest(branchName, branchTags, branchTypes, fromBranch, useTemplate, serials);
+				networkResponse=createBranch(baseUrl, organizationId, utilities, operationalData,mrequest);
+			}
+			else 
+			{
+				networkResponse= new NetworkResponse();
+				networkResponse.setMessage("Sync failed.. try later");
+				if(!isInventorySync)
+					UpdateInventoryCache(merakiInventoryList, operationalData);
+				if(!isTemplateSync)
+					updateTemplateCache(merakiTemplateList, operationalData);
+			}
+			System.out.println("Send to kafka"+ networkResponse.toString());	
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+	}
+	
+	public boolean checkIfTemplateInSync(OperationalDataCache operationalDataCache,String organizationId, Utilities utilities, String baseUrl, List<MConfigTemplate> merakiTemplateList)
+	{
+		boolean isSyncTemplate= false;
+
+		List<MConfigTemplate> cacheTemplateList =null;
+		ConfigTemplateInfo configTemplateInfo =operationalDataCache.getConfigTemplateRepo().get(organizationId);
+		if(configTemplateInfo==null)
+		{
+			return false;
+		}
+		cacheTemplateList=configTemplateInfo.getMConfigTemplateList();
+		if((cacheTemplateList.size()==merakiTemplateList.size()) && (cacheTemplateList.containsAll((merakiTemplateList))))
+		{
+			isSyncTemplate=true;
+		}
+		else
+		{
+			isSyncTemplate=false;
+		}
+		return isSyncTemplate;
+	}
+	public boolean checkIfInventoryInsync(OperationalDataCache operationalDataCache,String organizationId, Utilities utilities, String baseUrl, List<MInventory> merakiInventoryList)
+	{
+		boolean isSyncInventory= false;
+
+		try {
+			List<MInventory> cacheInventoryList;
+			InventoryInfo inventoryInfo =operationalDataCache.getUnclaimedInventoryRepo().get(organizationId) ;
+			if(inventoryInfo==null)
+			{ 
+				
+				return false;
+			}
+			cacheInventoryList = inventoryInfo.getInventoryList();
+			if((cacheInventoryList.size()==merakiInventoryList.size()) && (cacheInventoryList.containsAll((merakiInventoryList))))
+			{
+				isSyncInventory=true;
+			}
+			else
+			{
+				isSyncInventory=false;
+			}
+		}
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		return isSyncInventory;
+	}
+
+		private InventoryInfo UpdateInventoryCache(List<MInventory> merakiInventoryList, OperationalDataCache operationalDataCache) {
+			InventoryInfo inventoryInfo= new InventoryInfo();
+			try {
+				inventoryInfo.setInventoryList(merakiInventoryList);
+				inventoryInfo.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+				inventoryInfo.setOem(operationalData.getConfigurationProperties().get("meraki"));
+				inventoryInfo.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+				operationalDataCache.getUnclaimedInventoryRepo().put(organizationId, inventoryInfo);
+				System.out.println("send to Kafka Inventory List"+inventoryInfo);
+			}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+			}
+			return inventoryInfo;
+		}
+
+		private ConfigTemplateInfo updateTemplateCache(List<MConfigTemplate> mConfigTemplateList, OperationalDataCache operationalDataCache)
+		{
+			ConfigTemplateInfo templateInfo= new ConfigTemplateInfo();
+			try {
+				templateInfo.setMConfigTemplateList(mConfigTemplateList);
+				templateInfo.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+				templateInfo.setOem(operationalData.getConfigurationProperties().get("meraki"));
+				templateInfo.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+				operationalDataCache.getConfigTemplateRepo().put(organizationId, templateInfo);
+				System.out.println("send to Kafka Template List"+templateInfo);
+			}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+			}
+			return templateInfo;
+		}
+
+		public List<MConfigTemplate> getConfigTemplate(String baseUrl, String organizationId, Utilities utilities, OperationalDataCache operationalDataCache )
+		{
+			///organizations/:organizationId/configTemplates
+			ObjectMapper mapper= new ObjectMapper();
+			String jsonResponse=null;
+			List<MConfigTemplate> mconfigTemplates = null;
+			String url=baseUrl+"/organizations"+"/"+organizationId+"/configTemplates";
+			try {
+				APIResponse apiResponse = utilities.callApi(url,
+						operationalDataCache.getConfigurationProperties().get("proxy.address"),
+						Integer.parseInt(operationalDataCache.getConfigurationProperties().get("proxy.port")),
+						operationalDataCache.getConfigurationProperties().get("meraki.api.token.key"),
+						operationalDataCache.getConfigurationProperties().get("meraki.meraki_access_token"),
+						Boolean.valueOf(operationalDataCache.getConfigurationProperties().get("proxy.bypass")));
+
+				if (apiResponse.getResponseCode() == 200) {
+					jsonResponse = apiResponse.getJsonResponse();
+					if(jsonResponse!=null && !jsonResponse.trim().isEmpty())
+					{
+						mconfigTemplates=Arrays.asList(mapper.readValue(jsonResponse, MConfigTemplate[].class));
+						System.out.println("mconfigTemplate List \n:"+ mconfigTemplates);
+					} 
+				}
+			}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+			}
+			System.out.println(jsonResponse);
+			return mconfigTemplates;
+
+		}
+		public NetworkResponse createBranch(String baseUrl, String organizationId, Utilities utilities, OperationalDataCache operationalDataCache, NetworkRequest mrequest )
+		{
+			ObjectMapper mapper= new ObjectMapper();
+			//String url= operationalData.getConfigurationProperties().get("meraki.org") +"/"+organizationId+"/networks";
+			String url=baseUrl+"/organizations"+"/"+organizationId+"/networks";
+			String templateId="";
+			NetworkResponse networkResponse= new NetworkResponse();
+			//String jsonData="{\n\t\t\t\t\"branchName\": \"testBranchThroughCode1\",\n\t\t\t\t\"branchTags\": \" tag1 tag2 \",\n\t\t\t\t\"branchTypes\": \"appliance switch camera\"}";
+			try {
+				Map<String,Object> arguments = new HashMap<>();
+				arguments.put("name", mrequest.getBranchName());
+				arguments.put("type", mrequest.getBranchTypes());
+				arguments.put("tags", mrequest.getBranchTags());
+				//arguments.put("copyFromNetworkId", mrequest.getFromBranchTemplate());
+				//arguments.put("useTemplate", mrequest.getUseTemplate());
+				APIResponse apiResponse = utilities.postApi(url,
+						operationalDataCache.getConfigurationProperties().get("proxy.address"),
+						Integer.parseInt(operationalDataCache.getConfigurationProperties().get("proxy.port")),
+						operationalDataCache.getConfigurationProperties().get("meraki.api.token.key"),
+						operationalDataCache.getConfigurationProperties().get("meraki.meraki_access_token"),
+						Boolean.valueOf(operationalDataCache.getConfigurationProperties().get("proxy.bypass")),arguments);
+				networkResponse.setResponseCode(apiResponse.getResponseCode());
+				networkResponse.setOrganizationId(organizationId);
+				networkResponse.setMessage(apiResponse.getResponseMsg());
+				if(apiResponse.getResponseCode()==201)
+				{
+					String jsonResponse= apiResponse.getJsonResponse();
+					if(jsonResponse!=null && !jsonResponse.trim().isEmpty())
+					{
+						MCreateBranchResp mcreateBranchResp= mapper.readValue(jsonResponse,MCreateBranchResp.class);
+						networkResponse.setBranchId(mcreateBranchResp.getId());
+
+						APIResponse claimResp;
+						//bind network
+						//https://api.meraki.com/api/v0/networks/:networkId/bind
+						//claim device
+						//https://api.meraki.com/api/v0/networks/:networkId/devices/claim
+						String branchId= networkResponse.getBranchId();
+						if(networkResponse.getBranchId()!=null)
+						{
+							/*String serials="\""+ Arrays.toString(mrequest.getDeviceSerials())+"\"";//"{\"Q234-ABCD-0001\",\"Q234-ABCD-0002\",\"Q234-ABCD-0003\"}";
+							serials=serials.replace('[', '{').replace(']', '}');
+							System.out.println("serials"+serials);*/
+							String[] serials = mrequest.getDeviceSerials();
+							claimResp = claimDdeviceToNetwork(baseUrl,branchId, serials,utilities, operationalDataCache);
+							System.out.println(claimResp.toString());
+							if(claimResp.getResponseCode()!=200)
+							{
+								deleteNetwork(baseUrl,branchId,utilities, operationalDataCache);
+							}
+							else
+							{
+								System.out.println("claim successful");
+								APIResponse bindingResp = bindNetwork(operationalDataCache,baseUrl,branchId, templateId, utilities);
+								//System.out.println("bindingResp"+bindingResp);
+								if(bindingResp.getResponseCode()!=200)
+								{
+									//deleteNetwork(baseUrl,branchId,utilities);
+									//APIResponse networkResponse = deleteNetwork(baseUrl,"L_669347494617962883",utilities);
+								}
+								else
+								{
+									Branch branch = new Branch();
+									branch.setId(mcreateBranchResp.getId());
+									branch.setBranchName(mcreateBranchResp.getName());
+									branch.setBranchType(mcreateBranchResp.getType());
+									branch.setOrgId(Long.valueOf(organizationId));
+									branch.setOem(operationalData.getConfigurationProperties().get("meraki"));
+									branch.setStatus(operationalData.getConfigurationProperties().get("status.active"));
+									branch.setCreatedDate(operationalData.getConfigurationProperties().get("job.time"));
+									branch.setCreatedBy("TNaas");
+									branch.setTenant(operationalData.getConfigurationProperties().get("meraki.tenants"));
+									operationalData.getBranchRepository().put(mcreateBranchResp.getId(), new BranchReference(branch, Arrays.asList(mcreateBranchResp.getProductTypes())));
+									getOrganization();
+								}
+							}
+						}
+
+						//sendInventoryListToKafka
+						//sendTemplateListToKafka
+						//sendSuccessFailureResponse
+					}
+				}
+				networkResponse.setMessage(apiResponse.getResponseMsg()+"-"+apiResponse.getJsonResponse());
+				System.out.println("<>send to Kafka networkResponse"+networkResponse.toString());
+			}
+			// bind to Template
+			//https://api.meraki.com/api/v0/networks/:networkId/bind
+			//System.out.println("<<Send to Kafka \n>>"+networkResponse.toString());
+			//List<Inventory> unclaimedInventoryList=null;
+			//System.out.println("<<Send to Kafka \n>>"+unclaimedInventoryList.toString());
+
+			//}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+			}
+			return networkResponse;
+		}
+
+		private APIResponse deleteNetwork(String baseUrl,String branchId, Utilities utilities, OperationalDataCache operationalDataCache) {
+			//https://api.meraki.com/api/v0/networks/:networkId
+			String url = baseUrl+"/networks/"+branchId;
+			Map<String,Object> arguments = new HashMap<>();
+			arguments.put("networkId", branchId);
+			APIResponse apiResponse = utilities.delApi(url,
+					operationalDataCache.getConfigurationProperties().get("proxy.address"),
+					Integer.parseInt(operationalDataCache.getConfigurationProperties().get("proxy.port")),
+					operationalDataCache.getConfigurationProperties().get("meraki.api.token.key"),
+					operationalDataCache.getConfigurationProperties().get("meraki.meraki_access_token"),
+					Boolean.valueOf(operationalDataCache.getConfigurationProperties().get("proxy.bypass")));
+			System.out.println("Delete branch response :"+ apiResponse.toString());
+			if(apiResponse.getResponseCode()==204)
+			{
+				System.out.println("Branch deleted successfully:"+branchId);
+			}
+			else
+			{
+				System.out.println("branch deletion failed:"+ branchId);
+			}
+			return apiResponse;
+
+		}
+
+		public APIResponse claimDdeviceToNetwork(String baseUrl, String branchId, String[] deviceSerials,Utilities utilities, OperationalDataCache operationalDataCache)
+		{
+			String url = baseUrl+"/networks/"+branchId+"/devices/claim";
+			Map<String,Object> arguments = new HashMap<>();
+			arguments.put("serials[]", deviceSerials);
+			//arguments.put("serials[1]", deviceSerials[1]);
+			APIResponse apiResponse = utilities.postApi(url,
+					operationalDataCache.getConfigurationProperties().get("proxy.address"),
+					Integer.parseInt(operationalDataCache.getConfigurationProperties().get("proxy.port")),
+					operationalDataCache.getConfigurationProperties().get("meraki.api.token.key"),
+					operationalDataCache.getConfigurationProperties().get("meraki.meraki_access_token"),
+					Boolean.valueOf(operationalDataCache.getConfigurationProperties().get("proxy.bypass")),arguments);
+			return apiResponse;
+		}
+
+		public APIResponse bindNetwork(OperationalDataCache operationalDataCache, String baseUrl,String branchId, String TemplateId,Utilities utilities)
+		{
+			//https://api.meraki.com/api/v0/networks/:networkId/bind
+			String url= baseUrl+"/networks/"+branchId+"/bind";
+			Map<String,Object> arguments = new HashMap<>();
+			arguments.put("configTemplateId", "L_669347494617962864");
+			APIResponse apiResponse = utilities.postApi(url,
+					operationalDataCache.getConfigurationProperties().get("proxy.address"),
+					Integer.parseInt(operationalDataCache.getConfigurationProperties().get("proxy.port")),
+					operationalDataCache.getConfigurationProperties().get("meraki.api.token.key"),
+					operationalDataCache.getConfigurationProperties().get("meraki.meraki_access_token"),
+					Boolean.valueOf(operationalDataCache.getConfigurationProperties().get("proxy.bypass")),arguments);
+			return apiResponse;
+
+		}
+
+}

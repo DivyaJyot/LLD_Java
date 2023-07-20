@@ -1,0 +1,310 @@
+[
+    {
+        "id": "L_669347494617944218",
+        "organizationId": "744119",
+        "name": "Data Center",
+        "timeZone": "Asia/Calcutta",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch",
+            "wireless"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617945935",
+        "organizationId": "744119",
+        "name": "Head office",
+        "timeZone": "Asia/Kolkata",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch",
+            "systems manager",
+            "wireless"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617956005",
+        "organizationId": "744119",
+        "name": "siru-brc-02",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "wireless"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617960668",
+        "organizationId": "744119",
+        "name": "mum-brc-02",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617955930",
+        "organizationId": "744119",
+        "name": "siru-brc-01",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "N_669347494618020202",
+        "organizationId": "744119",
+        "name": "bgl-brc-01",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "camera"
+        ],
+        "type": "camera",
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617960981",
+        "organizationId": "744119",
+        "name": "Long Island Office",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962042",
+        "organizationId": "744119",
+        "name": "MyTask",
+        "timeZone": "Asia/Kolkata",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch",
+            "wireless"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962643",
+        "organizationId": "744119",
+        "name": "TestBranch1",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962652",
+        "organizationId": "744119",
+        "name": "delhi",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962653",
+        "organizationId": "744119",
+        "name": "Mumbai",
+        "timeZone": "Asia/Kolkata",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch",
+            "wireless"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962658",
+        "organizationId": "744119",
+        "name": "TestBranch2",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962659",
+        "organizationId": "744119",
+        "name": "TestBranch3",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962859",
+        "organizationId": "744119",
+        "name": "mumbai",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962864",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode1",
+        "timeZone": "America/Los_Angeles",
+        "tags": null,
+        "productTypes": [
+            "appliance",
+            "camera",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962895",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode3",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": false
+    },
+    {
+        "id": "L_669347494617962898",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode4",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962901",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode5",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962902",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode6",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962911",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode7",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    },
+    {
+        "id": "L_669347494617962919",
+        "organizationId": "744119",
+        "name": "testBranchThroughCode8",
+        "timeZone": "America/Los_Angeles",
+        "tags": " tag1 tag2 ",
+        "productTypes": [
+            "appliance",
+            "switch"
+        ],
+        "type": "combined",
+        "disableMyMerakiCom": false,
+        "disableRemoteStatusPage": true
+    }
+]

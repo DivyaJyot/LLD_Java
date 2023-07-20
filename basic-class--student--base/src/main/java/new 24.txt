@@ -1,0 +1,22 @@
+getOrganization
+NetworPollingBatchJob
+DynamicRequestListener
+
+tenant: refinitiv
+oem - meraki
+user-
+compare these 2 then process
+sync
+
+1. what to do with network response??
+2. How to get RestClientService,operationCache
+how to get restclientService
+
+boardcontroller
+
+
+print in restclientservice and operationalCache
+
+1. create super class
+2. pass all services through dynamicRequestListener
+3. retry hardcode remove.. implement in post and del
