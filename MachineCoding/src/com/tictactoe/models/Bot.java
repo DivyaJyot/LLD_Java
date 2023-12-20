@@ -2,6 +2,7 @@ package com.tictactoe.models;
 
 import com.tictactoe.exception.GameOverException;
 import com.tictactoe.service.botPlayingStrategy.BotPlayingStrategy;
+import com.tictactoe.service.botPlayingStrategy.BotPlayingStrategyFactory;
 
 public class Bot extends Player{
     private BotDifficultyLevel botDifficultyLevel;

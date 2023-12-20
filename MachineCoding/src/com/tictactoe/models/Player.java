@@ -1,11 +1,13 @@
 package com.tictactoe.models;
 
+import com.tictactoe.exception.GameOverException;
+
 import java.util.Scanner;
 
 import static com.tictactoe.models.CellState.FILLED;
 
 public class Player {
-    private String id;
+    private int id;
     private String name;
     private char symbol;
     private PlayerType playerType;
@@ -14,14 +16,14 @@ public class Player {
 
     }
 
-    public Player(String id, String name, char symbol, PlayerType playerType) {
+    public Player(int id, String name, char symbol, PlayerType playerType) {
         this.id = id;
         this.name = name;
         this.symbol = symbol;
         this.playerType = playerType;
     }
 
-    public Move makeMove(Board board){
+    public Move makeMove(Board board) throws GameOverException {
         Scanner sc = new Scanner(System.in);
         System.out.println("Enter the row of your move:");
         int row = sc.nextInt();
@@ -33,11 +35,11 @@ public class Player {
         return new Move(row,col,this);
 
     }
-    public String getId() {
+    public int getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(int id) {
         this.id = id;
     }
 
