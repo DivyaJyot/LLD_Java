@@ -75,6 +75,25 @@ private boolean checkCornerWin(char symbol){
     @Override
     public Player checkWinner(Board board, Move lastMove) {
         Player player= lastMove.getPlayer();
+        int row=lastMove.getCell().getRow();
+        int col=lastMove.getCell().getCol();
+        char symbol=player.getSymbol();
+        if(checkColwin(col,symbol)){
+            return player;
+        };
+        if (checkRowWin(row, symbol)){
+            return player;
+        };
+        if(isCornelCell(lastMove.getCell().getRow(),lastMove.getCell().getCol()) && checkCornerWin(symbol)){
+            return player;
+        }
+        if(isTopLeftDiagonalCell(lastMove.getCell().getRow(),lastMove.getCell().getCol())&& checkTopLeftDiagonalWin(symbol)){
+            return player;
+        }
+        if(isTopRightDiagonalCell(lastMove.getCell().getRow(),lastMove.getCell().getCol())&&
+        checkTopRightDiagonalWin(symbol)){
+            return player;
+        }
         return null;
     }
 }

@@ -19,20 +19,21 @@ public class LowBillCalculationStrategy implements  BillCalculationStrategy{
     }
 
 
-    public int getPerHourCost(VehicleType type){
-
-        switch(type){
+    public int getPerHourCost(VehicleType type) {
+        int cost = 0;
+        switch (type) {
             case CAR:
-                return 100;
+                cost = 100;
                 break;
             case BUS:
-                return 100;
+                cost = 100;
                 break;
             case BIKE:
-                return 40;
+                cost = 40;
                 break;
-
+            default:
+                cost=120;
         }
-
+        return  cost;
     }
 }

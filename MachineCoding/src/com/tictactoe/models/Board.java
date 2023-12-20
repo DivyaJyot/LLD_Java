@@ -25,8 +25,9 @@ public class Board {
 
     public Board(int size){
         this.size=size;
+        this.board=new ArrayList<>();
         for(int i=0;i<size;i++){
-                board.add(new ArrayList<>());
+                board.add(new ArrayList<Cell>());
                 for(int j=0;j<size;j++){
                     board.get(i).add(new Cell(i,j));
                 }

@@ -30,7 +30,7 @@ public class Game {
         this.currentBoard = currentBoard;
         this.player = player;
         this.winningStrategy = winningStrategy;
-        this.boards = new ArrayList<>();
+        this.boards = new ArrayList<Board>();
         this.moves = new ArrayList<>();
         this.winner = null;
         this.gameStatus = GameStatus.IN_PROGRESS;
